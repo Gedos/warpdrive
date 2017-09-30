@@ -2,24 +2,35 @@ var game = new Phaser.Game(800, 600, Phaser.CANVAS, 'phaser-example', { preload:
 
 var myUsername = 'Gedos';
 
-var socket = io();
+var socket = io.connect();
+socket.emit('newPlayer', myUsername, 400, 300);
 
-const otherUsers = {};
-
-function preload() {
-    game.load.image('background','assets/debug-grid.png');
-    game.load.image('bullet', 'assets/bullet.png');
-    game.load.image('ship', 'assets/ship.png');
-
-}
+const otherUsers = [];
 
 var sprite;
 var weapon;
 var cursors;
 var fireButton;
 
+function searchPlayer(element, index, array) {
+  console.log(this.valueOf());
+  return element['socketId'] === this.valueOf();
+}
+
+function preload() {
+    game.load.image('background','assets/debug-grid.png');
+    game.load.image('bullet', 'assets/bullet.png');
+    game.load.image('ship', 'assets/ship.png');
+    game.stage.disableVisibilityChange = true;
+}
+
+
+
 function create() {
   game.add.tileSprite(0, 0, 1920, 1920, 'background');
+
+      sprite = this.add.sprite(400, 300, 'ship');
+
 
 game.world.setBounds(0, 0, 1920, 1920);
 
@@ -34,8 +45,6 @@ game.world.setBounds(0, 0, 1920, 1920);
 
     //  Speed-up the rate of fire, allowing them to shoot 1 bullet every 60ms
     weapon.fireRate = 100;
-
-    sprite = this.add.sprite(400, 300, 'ship');
 
     sprite.anchor.set(0.5);
 
@@ -55,17 +64,36 @@ game.world.setBounds(0, 0, 1920, 1920);
 
     game.camera.follow(sprite);
 
-    socket.emit('newPlayer', myUsername, sprite.x, sprite.y);
-    socket.on('newPlayer', (username, xPos, yPos) => {
-      newShip = this.add.sprite(400, 300, 'ship');
-      newShip.x = xPos;
-      newShip.y = yPos;
-      otherUsers[username] = newShip;
+
+    socket.on('createPlayer', (username, xPos, yPos, socketId) => {
+      const userToPush = {
+      'username':username,
+      'xPos':xPos,
+      'yPos':yPos,
+      'angle':0,
+      'socketId':socketId,
+      'sprite':this.add.sprite(400, 300, 'ship')
+    };
+    userToPush['sprite'].anchor.set(0.5);
+    otherUsers.push(userToPush);
+    console.log('Pushed otherUser ', userToPush);
     });
 
-    socket.on('location', (username, xPos, yPos) => {
-      otherUsers[username].x = xPos;
-      otherUsers[username].y = yPos;
+    socket.on('removePlayer', (username, socketId) => {
+      const playerToRemove = find(otherUsers, {'socketId':socketId});
+      playerToRemove['sprite'].destroy();
+      console.log('Removed otherUser ', playerToRemove);
+      delete playerToRemove;
+    });
+
+    socket.on('location', (username, xPos, yPos, angle, socketId) => {
+      console.log(otherUsers, socketId);
+      const playerToMove = otherUsers.find(searchPlayer, socketId);
+      console.log('Moving ', playerToMove);
+      playerToMove['sprite'].x = xPos;
+      playerToMove['sprite'].y = yPos;
+      playerToMove['sprite'].angle = angle;
+      console.log('playerToMove');
     });
 
 }
@@ -101,8 +129,7 @@ function update() {
 
     game.world.wrap(sprite, 16);
 
-    socket.emit('location', myUsername, sprite.x, sprite.y);
-    console.log(otherUsers);
+    socket.emit('location', myUsername, sprite.x, sprite.y, sprite.angle);
 }
 
 function render() {
